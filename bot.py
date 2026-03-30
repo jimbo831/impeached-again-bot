@@ -49,10 +49,8 @@ def load_counter():
 
 
 def save_counter(n):
-    tmp = COUNTER_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(COUNTER_FILE, "w") as f:
         json.dump({"count": n}, f)
-    os.replace(tmp, COUNTER_FILE)
 
 
 def make_response(n):
