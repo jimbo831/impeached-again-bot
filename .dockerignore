@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+counter.json
+.git/
+.idea/
+*.iml
+*.png
+README.md
+bot-spec.md
+CLAUDE.md
