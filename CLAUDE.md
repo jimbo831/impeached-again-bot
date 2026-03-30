@@ -20,6 +20,9 @@ Defined in `.env`:
 - `DISCORD_TOKEN` — the bot token
 - `ADMIN_USER_ID` — Discord user ID for admin commands
 
+## Git Commits
+Do not mention Claude, AI, or any AI assistant in commit messages or co-author lines.
+
 ## Running the Bot
 ```bash
 source venv/bin/activate
