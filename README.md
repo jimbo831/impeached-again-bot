@@ -6,7 +6,7 @@ A Discord bot that tracks a running "impeached again" count, responding with sat
 
 - **Keyword detection** — triggers on any message matching `impeach* ... again` (case-insensitive)
 - **Slash commands** — `/impeach` and `/impeachments`
-- **Persistent counter** — survives restarts via a local JSON file
+- **Per-server counters** — each Discord server tracks its own count, persisted in a local JSON file
 - **13 randomized responses** — drawn from a pool of political satire
 
 ## Commands

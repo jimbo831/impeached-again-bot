@@ -41,16 +41,24 @@ def ordinal(n):
     return f"{n}{suffixes[min(n % 10, 3)] if n % 10 <= 3 else 'th'}"
 
 
-def load_counter():
+def load_data():
     if not os.path.exists(COUNTER_FILE):
-        return 0
+        return {"guilds": {}}
     with open(COUNTER_FILE) as f:
-        return json.load(f).get("count", 0)
+        return json.load(f)
 
 
-def save_counter(n):
+def save_data(data):
     with open(COUNTER_FILE, "w") as f:
-        json.dump({"count": n}, f)
+        json.dump(data, f, indent=2)
+
+
+def get_count(data, guild_id):
+    return data["guilds"].get(str(guild_id), {}).get("count", 0)
+
+
+def set_count(data, guild_id, guild_name, n):
+    data["guilds"][str(guild_id)] = {"name": guild_name, "count": n}
 
 
 def make_response(n):
@@ -75,21 +83,28 @@ async def on_message(message):
     if message.author == client.user:
         return
     if TRIGGER_RE.search(message.content):
-        count = load_counter() + 1
-        save_counter(count)
+        if message.guild is None:
+            return  # ignore DMs
+        data = load_data()
+        count = get_count(data, message.guild.id) + 1
+        set_count(data, message.guild.id, message.guild.name, count)
+        save_data(data)
         await message.channel.send(make_response(count))
 
 
 @tree.command(name="impeach", description="Impeach him again!")
 async def impeach(interaction: discord.Interaction):
-    count = load_counter() + 1
-    save_counter(count)
+    data = load_data()
+    count = get_count(data, interaction.guild_id) + 1
+    set_count(data, interaction.guild_id, interaction.guild.name, count)
+    save_data(data)
     await interaction.response.send_message(make_response(count))
 
 
 @tree.command(name="impeachments", description="Check the total impeachment count")
 async def impeachments(interaction: discord.Interaction):
-    count = load_counter()
+    data = load_data()
+    count = get_count(data, interaction.guild_id)
     await interaction.response.send_message(COUNT_RESPONSE.format(n=count))
 
 
@@ -99,7 +114,9 @@ async def setcount(interaction: discord.Interaction, value: int):
     if interaction.user.id != ADMIN_USER_ID:
         await interaction.response.send_message("You don't have permission to do that.", ephemeral=True)
         return
-    save_counter(value)
+    data = load_data()
+    set_count(data, interaction.guild_id, interaction.guild.name, value)
+    save_data(data)
     await interaction.response.send_message(f"Counter set to {value}.", ephemeral=True)
 
 

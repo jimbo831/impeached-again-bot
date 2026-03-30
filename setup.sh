@@ -10,7 +10,7 @@ if [ ! -f .env ]; then
 fi
 
 if [ ! -f counter.json ]; then
-    echo '{"count": 0}' > counter.json
+    echo '{"guilds": {}}' > counter.json
 fi
 
 bash deploy.sh
