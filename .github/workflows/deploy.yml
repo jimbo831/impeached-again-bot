@@ -1,0 +1,48 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy source files
+        run: |
+          rsync -az -e "ssh -i ~/.ssh/deploy_key" \
+            bot.py requirements.txt \
+            ubuntu@${{ secrets.VM_HOST }}:/opt/impeached-again-bot/
+
+      - name: Create .env
+        run: |
+          printf 'DISCORD_TOKEN=%s\nADMIN_USER_ID=%s\n' \
+            "${{ secrets.DISCORD_TOKEN }}" \
+            "${{ secrets.ADMIN_USER_ID }}" | \
+          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.VM_HOST }} \
+            "cat > /opt/impeached-again-bot/.env"
+
+      - name: Install dependencies and restart service
+        run: |
+          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.VM_HOST }} bash << 'EOF'
+            set -e
+            cd /opt/impeached-again-bot
+            if [ ! -d venv ]; then
+              python3.14 -m venv venv
+            fi
+            venv/bin/pip install -q --upgrade pip
+            venv/bin/pip install -q -r requirements.txt
+            sudo systemctl restart impeached-again-bot
+            sudo systemctl is-active impeached-again-bot
+          EOF
