@@ -21,7 +21,7 @@ jobs:
 
       - name: Copy source files
         run: |
-          rsync -az -e "ssh -i ~/.ssh/deploy_key" \
+          scp -i ~/.ssh/deploy_key \
             bot.py requirements.txt \
             ubuntu@${{ secrets.VM_HOST }}:/opt/impeached-again-bot/
 
