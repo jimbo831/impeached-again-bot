@@ -1,15 +1,39 @@
+import asyncio
 import json
+import math
 import os
 import random
 import re
+import urllib.parse
+import urllib.request
 
 import discord
 from discord import app_commands
+from discord.ext import tasks
 from dotenv import load_dotenv
 
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID"))
+ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "")
+UPTIME_KUMA_PUSH_URL = os.getenv("UPTIME_KUMA_PUSH_URL")
+
+
+def push_status(status, msg, ping=""):
+    """Report status to the Uptime Kuma push monitor, if one is configured."""
+    if not UPTIME_KUMA_PUSH_URL:
+        return
+    query = urllib.parse.urlencode({"status": status, "msg": msg[:200], "ping": ping})
+    try:
+        urllib.request.urlopen(f"{UPTIME_KUMA_PUSH_URL}?{query}", timeout=10).close()
+    except Exception as e:
+        print(f"Uptime Kuma push failed: {e}", flush=True)
+
+
+if not DISCORD_TOKEN or not ADMIN_USER_ID.isdigit():
+    error = "DISCORD_TOKEN and a numeric ADMIN_USER_ID must be set in .env"
+    push_status("down", error)
+    raise SystemExit(error)
+ADMIN_USER_ID = int(ADMIN_USER_ID)
 
 COUNTER_FILE = "counter.json"
 TRIGGER_RE = re.compile(r"\bimpeach\w*\W+(?:\w+\W+){0,3}again\b", re.IGNORECASE)
@@ -74,10 +98,24 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
+@tasks.loop(minutes=5)
+async def heartbeat():
+    if not math.isfinite(client.latency):
+        return  # disconnected from Discord; skip so Kuma notices if it lasts
+    try:
+        load_data()
+    except Exception as e:
+        await asyncio.to_thread(push_status, "down", f"Can't read {COUNTER_FILE}: {e}")
+        return
+    await asyncio.to_thread(push_status, "up", "OK", round(client.latency * 1000))
+
+
 @client.event
 async def on_ready():
     await tree.sync()
-    print(f"Logged in as {client.user}")
+    if not heartbeat.is_running():
+        heartbeat.start()
+    print(f"Logged in as {client.user}", flush=True)
 
 
 @client.event
@@ -125,4 +163,8 @@ async def setcount(interaction: discord.Interaction, value: app_commands.Range[i
     await interaction.response.send_message(f"Counter set to {value}.", ephemeral=True)
 
 
-client.run(DISCORD_TOKEN)
+try:
+    client.run(DISCORD_TOKEN)
+except Exception as e:
+    push_status("down", f"Bot stopped: {e}")
+    raise

@@ -27,9 +27,10 @@ jobs:
 
       - name: Create .env
         run: |
-          printf 'DISCORD_TOKEN=%s\nADMIN_USER_ID=%s\n' \
+          printf 'DISCORD_TOKEN=%s\nADMIN_USER_ID=%s\nUPTIME_KUMA_PUSH_URL=%s\n' \
             "${{ secrets.DISCORD_TOKEN }}" \
-            "${{ secrets.ADMIN_USER_ID }}" | \
+            "${{ secrets.ADMIN_USER_ID }}" \
+            "${{ secrets.UPTIME_KUMA_PUSH_URL }}" | \
           ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.VM_HOST }} \
             "cat > /opt/impeached-again-bot/.env"
 
@@ -43,6 +44,15 @@ jobs:
             fi
             venv/bin/pip install -q --upgrade pip
             venv/bin/pip install -q -r requirements.txt
+            since=$(date '+%Y-%m-%d %H:%M:%S')
             sudo systemctl restart impeached-again-bot
-            sudo systemctl is-active impeached-again-bot
+            for i in $(seq 1 30); do
+              if sudo journalctl -u impeached-again-bot --since "$since" | grep -q "Logged in as"; then
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "Bot did not log in within 30s:"
+            sudo journalctl -u impeached-again-bot --since "$since" --no-pager -n 50
+            exit 1
           EOF
