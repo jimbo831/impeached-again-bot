@@ -1,12 +1,33 @@
-name: Deploy
+name: Test and Deploy
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy this branch to the VM (main always deploys)
+        type: boolean
+        default: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Run tests
+        run: |
+          pip install -q -r requirements.txt
+          python -m unittest -v
+
   deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' || inputs.deploy
     runs-on: ubuntu-latest
 
     steps:

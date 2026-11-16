@@ -29,12 +29,6 @@ def push_status(status, msg, ping=""):
         print(f"Uptime Kuma push failed: {e}", flush=True)
 
 
-if not DISCORD_TOKEN or not ADMIN_USER_ID.isdigit():
-    error = "DISCORD_TOKEN and a numeric ADMIN_USER_ID must be set in .env"
-    push_status("down", error)
-    raise SystemExit(error)
-ADMIN_USER_ID = int(ADMIN_USER_ID)
-
 COUNTER_FILE = "counter.json"
 TRIGGER_RE = re.compile(r"\bimpeach\w*\W+(?:\w+\W+){0,3}again\b", re.IGNORECASE)
 
@@ -59,10 +53,10 @@ COUNT_RESPONSE = "THE FAKE NEWS MEDIA won't tell you this, but the Total Impeach
 
 
 def ordinal(n):
-    if 11 <= (n % 100) <= 13:
+    if 11 <= n % 100 <= 13:
         return f"{n}th"
-    suffixes = ["th", "st", "nd", "rd"]
-    return f"{n}{suffixes[min(n % 10, 3)] if n % 10 <= 3 else 'th'}"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def load_data():
@@ -169,7 +163,7 @@ async def impeachments(interaction: discord.Interaction):
 @app_commands.guild_only()
 @app_commands.describe(value="The new counter value")
 async def setcount(interaction: discord.Interaction, value: app_commands.Range[int, 0]):
-    if interaction.user.id != ADMIN_USER_ID:
+    if str(interaction.user.id) != ADMIN_USER_ID:
         await interaction.response.send_message("You don't have permission to do that.", ephemeral=True)
         return
     data = load_data()
@@ -178,8 +172,13 @@ async def setcount(interaction: discord.Interaction, value: app_commands.Range[i
     await interaction.response.send_message(f"Counter set to {value}.", ephemeral=True)
 
 
-try:
-    client.run(DISCORD_TOKEN)
-except Exception as e:
-    push_status("down", f"Bot stopped: {e}")
-    raise
+if __name__ == "__main__":
+    if not DISCORD_TOKEN or not ADMIN_USER_ID.isdigit():
+        error = "DISCORD_TOKEN and a numeric ADMIN_USER_ID must be set in .env"
+        push_status("down", error)
+        raise SystemExit(error)
+    try:
+        client.run(DISCORD_TOKEN)
+    except Exception as e:
+        push_status("down", f"Bot stopped: {e}")
+        raise
