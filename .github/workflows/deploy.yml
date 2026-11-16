@@ -72,7 +72,9 @@ jobs:
             since=$(date '+%Y-%m-%d %H:%M:%S')
             sudo systemctl restart impeached-again-bot
             for i in $(seq 1 30); do
-              if sudo journalctl -u impeached-again-bot --since "$since" | grep -q "Logged in as"; then
+              line=$(sudo journalctl -u impeached-again-bot --since "$since" | grep -m1 "Logged in as" || true)
+              if [ -n "$line" ]; then
+                echo "Bot started: $line"
                 exit 0
               fi
               sleep 1
