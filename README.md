@@ -24,7 +24,7 @@ A Discord bot that tracks a running "impeached again" count, responding with sat
 ### Prerequisites
 
 - Python 3.10+ (production runs 3.14)
-- A Discord bot token ([Discord Developer Portal](https://discord.com/developers/applications))
+- A Discord bot token ([Discord Developer Portal](https://discord.com/developers/applications)), with **Message Content Intent** enabled under Bot → Privileged Gateway Intents (without it the bot fails to connect)
 
 ### Install
 
@@ -72,4 +72,42 @@ The bot runs on an Oracle Cloud VM as a systemd service, deployed by GitHub Acti
 
 Required GitHub secrets: `VM_HOST`, `VM_SSH_KEY`, `DISCORD_TOKEN`, `ADMIN_USER_ID`, `EIA_API_KEY`, and optionally `UPTIME_KUMA_PUSH_URL`.
 
-The live `counter.json` exists only on the VM and is not touched by deploys.
+The live `counter.json` exists only on the VM and is not touched by deploys. To back it up:
+
+```bash
+scp ubuntu@<vm-host>:/opt/impeached-again-bot/counter.json .
+```
+
+### VM setup (one time)
+
+Needed only when building a new VM. The deploy handles everything after this.
+
+1. Install Python 3.14 (`python3.14` and its `venv` module).
+2. Create the app directory: `sudo mkdir -p /opt/impeached-again-bot && sudo chown ubuntu: /opt/impeached-again-bot`
+3. Make sure the `ubuntu` user can run `sudo systemctl restart impeached-again-bot` and `sudo journalctl -u impeached-again-bot` without a password; the deploy uses both. Oracle's Ubuntu image already grants `ubuntu` passwordless sudo for everything (`/etc/sudoers.d/90-cloud-init-users`), but the bot's own rule covers both commands in case that is ever removed. Create it with `sudo visudo -f /etc/sudoers.d/impeached-again-bot`:
+
+   ```
+   ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl restart impeached-again-bot, /usr/bin/journalctl -u impeached-again-bot *
+   ```
+4. Create `/etc/systemd/system/impeached-again-bot.service`:
+
+   ```ini
+   [Unit]
+   Description=Impeached Again Bot
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=ubuntu
+   WorkingDirectory=/opt/impeached-again-bot
+   EnvironmentFile=/opt/impeached-again-bot/.env
+   ExecStart=/opt/impeached-again-bot/venv/bin/python bot.py
+   Restart=on-failure
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+5. Enable it: `sudo systemctl daemon-reload && sudo systemctl enable impeached-again-bot`
+6. Run the GitHub Actions workflow on `main` to deploy the code, create the venv and start the bot.
