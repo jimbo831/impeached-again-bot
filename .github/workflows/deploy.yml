@@ -43,15 +43,16 @@ jobs:
       - name: Copy source files
         run: |
           scp -i ~/.ssh/deploy_key \
-            bot.py requirements.txt \
+            bot.py responses.py requirements.txt \
             ubuntu@${{ secrets.VM_HOST }}:/opt/impeached-again-bot/
 
       - name: Create .env
         run: |
-          printf 'DISCORD_TOKEN=%s\nADMIN_USER_ID=%s\nUPTIME_KUMA_PUSH_URL=%s\n' \
+          printf 'DISCORD_TOKEN=%s\nADMIN_USER_ID=%s\nUPTIME_KUMA_PUSH_URL=%s\nEIA_API_KEY=%s\n' \
             "${{ secrets.DISCORD_TOKEN }}" \
             "${{ secrets.ADMIN_USER_ID }}" \
-            "${{ secrets.UPTIME_KUMA_PUSH_URL }}" | \
+            "${{ secrets.UPTIME_KUMA_PUSH_URL }}" \
+            "${{ secrets.EIA_API_KEY }}" | \
           ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.VM_HOST }} \
             "cat > /opt/impeached-again-bot/.env"
 

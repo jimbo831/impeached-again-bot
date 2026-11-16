@@ -1,9 +1,11 @@
 import asyncio
+import datetime
 import json
 import math
 import os
 import random
 import re
+import string
 import urllib.parse
 import urllib.request
 
@@ -12,10 +14,13 @@ from discord import app_commands
 from discord.ext import tasks
 from dotenv import load_dotenv
 
+from responses import COUNT_RESPONSE, RESPONSES
+
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "")
 UPTIME_KUMA_PUSH_URL = os.getenv("UPTIME_KUMA_PUSH_URL")
+EIA_API_KEY = os.getenv("EIA_API_KEY")
 
 
 def push_status(status, msg, ping=""):
@@ -31,25 +36,6 @@ def push_status(status, msg, ping=""):
 
 COUNTER_FILE = "counter.json"
 TRIGGER_RE = re.compile(r"\bimpeach\w*\W+(?:\w+\W+){0,3}again\b", re.IGNORECASE)
-
-# {n} = raw number, {ord} = properly formatted ordinal (e.g. "1st", "2nd")
-RESPONSES = [
-    "Trump has been impeached again! That's {n} times and counting.",
-    "{n} impeachments and counting. Possibly the most in history. Nobody knows.",
-    "Another day, another impeachment. Count: {n}",
-    "Madam Speaker, we got him. Again. (#{n})",
-    "Article I, Article II, Article {n}. Impeached. Again.",
-    "WITCH HUNT! HOAX! ...Impeachment #{n}.",
-    "You're ~~fired~~ impeached. Again. (#{n})",
-    "Many people are saying this is the greatest impeachment. Maybe ever. The {ord}.",
-    "This is it. This is definitely the one. He can't survive this. ...Impeachment #{n}.",
-    "Please, please. It's too much impeaching. We can't take it anymore, it's too much.\nNo it isn't. We have to keep impeaching. We have to impeach {n} more times!",
-    "It was a perfect impeachment. The most perfect. READ THE TRANSCRIPT. (#{n})",
-    "A big, strong man came up to me — tough guy, you wouldn't believe it — tears in his eyes. He said, 'Sir, this is the {ord} impeachment.' I said, 'I know. Aren't they beautiful?'",
-    "Just got word that the Radical Left has done it AGAIN. That's {n} Total Impeachments, each one more PERFECT and BEAUTIFUL than the last. SAD!!!",
-]
-
-COUNT_RESPONSE = "THE FAKE NEWS MEDIA won't tell you this, but the Total Impeachment Count is now {n}. WITCH HUNT!!! Thank you for your attention to this matter!"
 
 
 def ordinal(n):
@@ -91,9 +77,78 @@ def increment_count(guild):
     return count
 
 
-def make_response(n):
-    template = random.choice(RESPONSES)
-    return template.format(n=n, ord=ordinal(n))
+def fetch_json(url):
+    # Some sites block Python's default User-Agent; send a generic one instead
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.load(response)
+
+
+def fetch_approval():
+    # ElectionsUSA polling average (CC BY 4.0)
+    data = fetch_json("https://electionsusa.org/api/approval-trump-2.json")
+    return round(data["average"]["Approve"])
+
+
+def fetch_gas_price():
+    # EIA weekly U.S. average retail price, regular gasoline
+    if not EIA_API_KEY:
+        raise RuntimeError("EIA_API_KEY not set")
+    query = urllib.parse.urlencode({
+        "api_key": EIA_API_KEY,
+        "frequency": "weekly",
+        "data[0]": "value",
+        "facets[series][]": "EMM_EPMR_PTE_NUS_DPG",
+        "sort[0][column]": "period",
+        "sort[0][direction]": "desc",
+        "length": 1,
+    })
+    data = fetch_json(f"https://api.eia.gov/v2/petroleum/pri/gnd/data/?{query}")
+    return f"{float(data['response']['data'][0]['value']):.2f}"
+
+
+LIVE_FETCHERS = {"approval": fetch_approval, "gas_price": fetch_gas_price}
+live_values = {}  # last successful value for each fetcher; kept if a later fetch fails
+live_failures = {}  # name -> (consecutive failures, last error)
+
+
+def live_data_problem():
+    """Describe live lookups that have failed 3 times in a row (about 2 hours), or return None."""
+    failing = [f"{name}: {error}" for name, (count, error) in live_failures.items() if count >= 3]
+    if failing:
+        return f"Live data lookup failing ({'; '.join(failing)}). Bot is otherwise running."
+    return None
+
+
+def trump_age(today=None):
+    today = today or datetime.date.today()
+    return today.year - 1946 - ((today.month, today.day) < (6, 14))
+
+
+# Shuffle bag: every response is used once before any repeats. In memory only,
+# so a restart starts a fresh shuffle.
+_bag = []
+_last = None
+
+
+def next_template():
+    global _last
+    if not _bag:
+        _bag.extend(random.sample(RESPONSES, len(RESPONSES)))
+        if _bag[-1] == _last:  # don't repeat across the reshuffle
+            _bag[0], _bag[-1] = _bag[-1], _bag[0]
+    _last = _bag.pop()
+    return _last
+
+
+def make_response(count):
+    values = {"count": count, "ordinal": ordinal(count), "age": trump_age(), **live_values}
+    for _ in range(len(RESPONSES)):
+        template = next_template()
+        fields = {name for _, name, _, _ in string.Formatter().parse(template) if name}
+        if fields <= values.keys():  # skip responses whose live value isn't available
+            return template.format(**values)
+    return f"Impeachment #{count}."
 
 
 class ImpeachBot(discord.Client):
@@ -101,6 +156,7 @@ class ImpeachBot(discord.Client):
         # Runs once at startup, unlike on_ready which also fires on reconnects
         await tree.sync()
         heartbeat.start()
+        refresh_live_values.start()
 
 
 intents = discord.Intents.default()
@@ -118,7 +174,23 @@ async def heartbeat():
     except Exception as e:
         await asyncio.to_thread(push_status, "down", f"Can't read {COUNTER_FILE}: {e}")
         return
+    problem = live_data_problem()
+    if problem:
+        await asyncio.to_thread(push_status, "down", problem)
+        return
     await asyncio.to_thread(push_status, "up", "OK", round(client.latency * 1000))
+
+
+@tasks.loop(hours=1)
+async def refresh_live_values():
+    for name, fetch in LIVE_FETCHERS.items():
+        try:
+            live_values[name] = await asyncio.to_thread(fetch)
+            live_failures.pop(name, None)
+        except Exception as e:
+            count = live_failures.get(name, (0, None))[0] + 1
+            live_failures[name] = (count, str(e))
+            print(f"Live value {name} failed ({count} in a row): {e}", flush=True)
 
 
 @heartbeat.before_loop
@@ -156,7 +228,7 @@ async def impeach(interaction: discord.Interaction):
 async def impeachments(interaction: discord.Interaction):
     data = load_data()
     count = get_count(data, interaction.guild_id)
-    await interaction.response.send_message(COUNT_RESPONSE.format(n=count))
+    await interaction.response.send_message(COUNT_RESPONSE.format(count=count))
 
 
 @tree.command(name="setcount", description="(Admin) Set the impeachment counter")
