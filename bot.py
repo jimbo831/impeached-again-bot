@@ -12,7 +12,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID"))
 
 COUNTER_FILE = "counter.json"
-TRIGGER_RE = re.compile(r"impeach\w*\s+(\w+\s+){0,3}again", re.IGNORECASE)
+TRIGGER_RE = re.compile(r"\bimpeach\w*\W+(?:\w+\W+){0,3}again\b", re.IGNORECASE)
 
 # {n} = raw number, {ord} = properly formatted ordinal (e.g. "1st", "2nd")
 RESPONSES = [
@@ -49,8 +49,10 @@ def load_data():
 
 
 def save_data(data):
-    with open(COUNTER_FILE, "w") as f:
+    tmp = COUNTER_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp, COUNTER_FILE)
 
 
 def get_count(data, guild_id):
@@ -80,7 +82,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if message.author == client.user:
+    if message.author.bot:
         return
     if TRIGGER_RE.search(message.content):
         if message.guild is None:
@@ -93,6 +95,7 @@ async def on_message(message):
 
 
 @tree.command(name="impeach", description="Impeach him again!")
+@app_commands.guild_only()
 async def impeach(interaction: discord.Interaction):
     data = load_data()
     count = get_count(data, interaction.guild_id) + 1
@@ -102,6 +105,7 @@ async def impeach(interaction: discord.Interaction):
 
 
 @tree.command(name="impeachments", description="Check the total impeachment count")
+@app_commands.guild_only()
 async def impeachments(interaction: discord.Interaction):
     data = load_data()
     count = get_count(data, interaction.guild_id)
@@ -109,8 +113,9 @@ async def impeachments(interaction: discord.Interaction):
 
 
 @tree.command(name="setcount", description="(Admin) Set the impeachment counter")
+@app_commands.guild_only()
 @app_commands.describe(value="The new counter value")
-async def setcount(interaction: discord.Interaction, value: int):
+async def setcount(interaction: discord.Interaction, value: app_commands.Range[int, 0]):
     if interaction.user.id != ADMIN_USER_ID:
         await interaction.response.send_message("You don't have permission to do that.", ephemeral=True)
         return

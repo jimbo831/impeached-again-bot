@@ -1,7 +1,7 @@
 # Impeached Again Bot — Spec
 
 ## Trigger Mechanism
-- Keyword detection: case-insensitive regex matching `impeach\w*\s+(\w+\s+){0,3}again` in any message
+- Keyword detection: case-insensitive regex matching `\bimpeach\w*\W+(?:\w+\W+){0,3}again\b` in any message
 - Slash command: `/impeach`
 - Both increment the counter and respond with a random response from the main pool
 - **The bot must ignore its own messages to prevent self-triggering**
