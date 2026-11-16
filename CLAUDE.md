@@ -14,7 +14,7 @@ Prefer simple and minimal solutions. Avoid overengineering.
 - `bot.py` — main bot file
 - `responses.py` — response templates (the only place phrases are listed); placeholder and formatting notes at the top
 - `test_bot.py` — unit tests (stdlib `unittest`)
-- `.github/workflows/deploy.yml` — runs tests on every push; deploys to the VM on pushes to `main` (or manually for any branch)
+- `.github/workflows/deploy.yml` — runs tests on every push (except Markdown/image-only changes); deploys to the VM on pushes to `main` (or manually for any branch)
 - `counter.json` — persistent counter storage (auto-created if missing, not committed). The live copy exists only on the VM and is never touched by deploys.
 - `.env` — secrets (not committed). On the VM it is rewritten from GitHub secrets on every deploy.
 

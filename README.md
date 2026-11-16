@@ -66,11 +66,11 @@ python -m unittest
 
 The bot runs on an Oracle Cloud VM as a systemd service, deployed by GitHub Actions (`.github/workflows/deploy.yml`):
 
-- Every push runs the tests.
-- Pushes to `main` then deploy: `bot.py`, `responses.py` and `requirements.txt` are copied to the VM, `.env` is written from GitHub secrets, dependencies are installed, and the service is restarted. The deploy fails if the bot doesn't log in within 30 seconds.
+- Every push runs the tests, except pushes that only change Markdown or images.
+- Pushes to `main` then deploy: `bot.py`, `responses.py` and `requirements.txt` are copied to the VM, `.env` is written from GitHub secrets, dependencies are installed, and the service is restarted. Overlapping deploys queue rather than run at once. The deploy fails if the bot doesn't log in within 30 seconds.
 - Any branch can be deployed manually from the Actions tab by running the workflow with "Deploy this branch" checked.
 
-Required GitHub secrets: `VM_HOST`, `VM_SSH_KEY`, `DISCORD_TOKEN`, `ADMIN_USER_ID`, `EIA_API_KEY`, and optionally `UPTIME_KUMA_PUSH_URL`.
+Required GitHub secrets: `VM_HOST`, `VM_HOST_KEY`, `VM_SSH_KEY`, `DISCORD_TOKEN`, `ADMIN_USER_ID`, `EIA_API_KEY`, and optionally `UPTIME_KUMA_PUSH_URL`.
 
 The live `counter.json` exists only on the VM and is not touched by deploys. To back it up:
 
@@ -110,4 +110,10 @@ Needed only when building a new VM. The deploy handles everything after this.
    ```
 
 5. Enable it: `sudo systemctl daemon-reload && sudo systemctl enable impeached-again-bot`
-6. Run the GitHub Actions workflow on `main` to deploy the code, create the venv and start the bot.
+6. Set the `VM_HOST_KEY` GitHub secret to the VM's SSH host key, so deploys only connect to this VM. Run this on the VM and use the output line as the secret (the `*` matches any address, so it keeps working if the VM's IP changes; the key itself is what verifies the server):
+
+   ```bash
+   echo "* $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+   ```
+
+7. Run the GitHub Actions workflow on `main` to deploy the code, create the venv and start the bot.

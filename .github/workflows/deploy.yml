@@ -2,6 +2,7 @@ name: Test and Deploy
 
 on:
   push:
+    paths-ignore: ["**.md", "**.png"]
   workflow_dispatch:
     inputs:
       deploy:
@@ -29,6 +30,8 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' || inputs.deploy
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy
 
     steps:
       - uses: actions/checkout@v5
@@ -38,7 +41,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          echo "${{ secrets.VM_HOST_KEY }}" > ~/.ssh/known_hosts
 
       - name: Copy source files
         run: |
@@ -54,7 +57,7 @@ jobs:
             "${{ secrets.UPTIME_KUMA_PUSH_URL }}" \
             "${{ secrets.EIA_API_KEY }}" | \
           ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.VM_HOST }} \
-            "cat > /opt/impeached-again-bot/.env"
+            "cd /opt/impeached-again-bot && touch .env && chmod 600 .env && cat > .env"
 
       - name: Install dependencies and restart service
         run: |
