@@ -78,6 +78,8 @@ The live `counter.json` exists only on the VM and is not touched by deploys. To 
 scp ubuntu@<vm-host>:/opt/impeached-again-bot/counter.json .
 ```
 
+If `counter.json` is ever lost, find the bot's last reply in each server and run `/setcount <number>` there.
+
 ### VM setup (one time)
 
 Needed only when building a new VM. The deploy handles everything after this.
