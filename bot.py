@@ -87,14 +87,31 @@ def set_count(data, guild_id, guild_name, n):
     data["guilds"][str(guild_id)] = {"name": guild_name, "count": n}
 
 
+def increment_count(guild):
+    # No awaits in here: the bot handles one event at a time between awaits,
+    # so this load-modify-save can't interleave with another trigger.
+    data = load_data()
+    count = get_count(data, guild.id) + 1
+    set_count(data, guild.id, guild.name, count)
+    save_data(data)
+    return count
+
+
 def make_response(n):
     template = random.choice(RESPONSES)
     return template.format(n=n, ord=ordinal(n))
 
 
+class ImpeachBot(discord.Client):
+    async def setup_hook(self):
+        # Runs once at startup, unlike on_ready which also fires on reconnects
+        await tree.sync()
+        heartbeat.start()
+
+
 intents = discord.Intents.default()
 intents.message_content = True
-client = discord.Client(intents=intents)
+client = ImpeachBot(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
@@ -110,11 +127,13 @@ async def heartbeat():
     await asyncio.to_thread(push_status, "up", "OK", round(client.latency * 1000))
 
 
+@heartbeat.before_loop
+async def before_heartbeat():
+    await client.wait_until_ready()
+
+
 @client.event
 async def on_ready():
-    await tree.sync()
-    if not heartbeat.is_running():
-        heartbeat.start()
     print(f"Logged in as {client.user}", flush=True)
 
 
@@ -125,20 +144,16 @@ async def on_message(message):
     if TRIGGER_RE.search(message.content):
         if message.guild is None:
             return  # ignore DMs
-        data = load_data()
-        count = get_count(data, message.guild.id) + 1
-        set_count(data, message.guild.id, message.guild.name, count)
-        save_data(data)
+        if not message.channel.permissions_for(message.guild.me).send_messages:
+            return  # can't reply here, so don't count it
+        count = increment_count(message.guild)
         await message.channel.send(make_response(count))
 
 
 @tree.command(name="impeach", description="Impeach him again!")
 @app_commands.guild_only()
 async def impeach(interaction: discord.Interaction):
-    data = load_data()
-    count = get_count(data, interaction.guild_id) + 1
-    set_count(data, interaction.guild_id, interaction.guild.name, count)
-    save_data(data)
+    count = increment_count(interaction.guild)
     await interaction.response.send_message(make_response(count))
 
 
